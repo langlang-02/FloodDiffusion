@@ -1,0 +1,38 @@
+id: g1_local_rot6d68_v1
+bank_format: bones_g1_feature_bank_v1
+fps: 20
+velocity_unit: per_frame
+velocity_frame: current_heading
+fields:
+  - joint_angles
+  - joint_vel
+  - root_roll_pitch_rot6d
+  - root_yaw_vel
+  - root_xy_vel_body
+  - root_height
+seed: 3407
+model:
+  input_dim: 68
+  z_dim: 4
+  dim: 160
+  dec_dim: 512
+  dim_mult: [1, 1, 1]
+  temperal_downsample: [true, true]
+  num_res_blocks: 1
+  vel_window: [29, 58]
+  LAMBDA_FEATURE: 1.0
+  LAMBDA_VELOCITY: 0.5
+  LAMBDA_KL: 0.00001
+training:
+  max_steps: 100000
+  batch_size_per_gpu: 64
+  window: 65
+  learning_rate: 0.0002
+  warmup_steps: 1000
+  ema_decay: 0.99
+  validate_every: 1000
+  checkpoint_every: 1000
+  log_every: 50
+  workers: 2
+  eval_batch_size: 16
+  precision: bf16

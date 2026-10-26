@@ -91,3 +91,12 @@ All third-party licenses are compatible with this project's Apache 2.0 License:
 -   Modifications to third-party code are documented in file headers
 
 For questions, open an issue in the project repository.
+
+## MoMask G1 Feature Conversion and Reconstruction Metrics
+
+**Files:** `vendor/momask_g1/g1_io.py`, `vendor/momask_g1/g1_metrics.py`
+**Source:** User-provided MoMask branch `feat/g1-rvq-tracking`, commit
+`bde792168a14b7317df2c45f233adeb7cae20b26`.
+**License:** MIT; see `vendor/momask_g1/LICENSE`.
+**Modifications:** Self-contained imports and named-joint lookup in the metric
+module. Feature conventions and physical metric semantics are preserved.

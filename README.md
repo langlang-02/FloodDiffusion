@@ -367,3 +367,88 @@ Copyright (c) 2025 Shanda AI Research Tokyo
 ### Data License Notice
 
 The preprocessed datasets we provide contain **extracted motion features (263-dim) and text annotations** derived from HumanML3D and BABEL, which are built upon AMASS and HumanAct12. We **do not distribute raw AMASS data** (SMPL parameters/meshes). This follows standard practice in the motion generation research community. If you require raw motion data or plan to use it for commercial purposes, please register and agree to the licenses on the [AMASS website](https://amass.is.tue.mpg.de/).
+
+## G1 Causal-VAE Reconstruction
+
+The G1 workflow reuses `models.vae_wan_1d.VAEWanModel` without changing the
+HumanML3D pipeline. It supports the MoMask `feat/g1-rvq-tracking` feature-bank
+views in `configs/g1_rot6d68.yaml` and `configs/g1_sincos66.yaml`:
+
+| Channels | rot6d68 | sincos66 |
+| --- | --- | --- |
+| Joint angles / backward joint increments | 29 + 29 | 29 + 29 |
+| Root roll/pitch | 6D rotation | sin/cos−1 pairs (4D) |
+| Yaw increment / heading-frame XY increment / height | 1 + 2 + 1 | 1 + 2 + 1 |
+
+Both use 20 Hz and **per-frame** increments. Native poses are reconstructed
+from predicted joint angles, tilt, height, and integrated root increments;
+only initial ground-truth XYZ/yaw is supplied. Joint increments are auxiliary.
+The canonical conversion and metric code is vendored with provenance in
+`vendor/momask_g1/`.
+
+### Data and training
+
+`scripts/g1/pack_reference.py` packs an audited MoMask bank into memory-mapped arrays,
+retaining all split IDs, anchors, and train-only normalization statistics.
+`scripts/g1/verify_data.py` checks every checksum and source/mirror split separation.
+Use `bcecmd` to transfer archives; keep datasets outside the repository.
+The prepared data has 168,895 training, 9,294 validation, and 9,588 test windows.
+
+Install a driver-compatible PyTorch plus `numpy scipy pyyaml mujoco`. No text
+encoder, Flash Attention, HumanML3D evaluator, or dataset text is required.
+
+```bash
+python scripts/g1/verify_data.py "$DATA_ROOT"
+CUDA_VISIBLE_DEVICES=0,1,2,3 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 \
+python -m torch.distributed.run --standalone --nproc_per_node=4 \
+  scripts/g1/train.py --config configs/g1_rot6d68.yaml \
+  --data "$DATA_ROOT" --output outputs/g1_rot6d68
+```
+
+Use `g1_sincos66.yaml` and a separate output for the other view. Defaults are
+100,000 optimizer steps, four GPUs, 64 windows/GPU (global batch 256), 65-frame
+training crops, BF16, latent dimension 4, AdamW at 2e-4, 1,000-step warmup, and
+EMA 0.99. The loss remains normalized SmoothL1 reconstruction + 0.5 SmoothL1
+on joint-increment channels `29:58` + 1e-5 KL. No foot-slip loss is added.
+Padding follows the causal codec's `4k+1` length rule. Training retains the
+upstream mask/reduction behavior; validation explicitly averages valid values.
+
+Every 1,000 steps, all validation windows select `best.pt` by deterministic
+EMA reconstruction + 0.5 auxiliary reconstruction. `last.pt` also stores
+optimizer, rank RNG states, and data/config signatures. Resume explicitly with
+`--resume`; worker crop RNG streams may differ after restart.
+
+### Automatic completion and MPJPE
+
+```bash
+python scripts/g1/pipeline.py --data "$DATA_ROOT" --mjcf "$G1_MJCF" \
+  --run outputs/g1_runs/experiment
+```
+
+The supervisor waits for `DATA_ROOT/VERIFIED.json`, snapshots source/configs,
+then starts rot6d on GPUs 0–3 and sincos on GPUs 4–7 after checking availability.
+It runs each test evaluation after that training succeeds. Start it detached
+with `nohup ... > pipeline.log 2>&1 &`; no interactive monitoring is needed.
+`scripts/g1/fetch_packed_data.sh DATASET_DIR PYTHON BOS_SOURCE` downloads the supplied BOS archive,
+verification, and atomic ready marker. The supervisor records failures and
+never treats failed training as completed evaluation.
+
+Each run writes `train.jsonl`, `validation.jsonl`, `status.json`, checkpoints,
+and `evaluation/metrics.json`. The final `summary.json` compares both runs.
+Evaluation covers the entire held-out test split using the best EMA checkpoint
+and posterior mean in float32. MPJPE uses 29 named G1 hinge joint anchors from
+MuJoCo kinematics, in millimeters, weighted by frames/joints. It reports both
+global and root-translation-relative MPJPE (no yaw or Procrustes alignment),
+plus root drift, rotation, joint-angle, and temporal errors. Per-sequence CSV
+and eight reconstruction NPZs are saved. There is no physics stepping or
+joint-limit clipping. Metrics describe kinematic reconstruction, not control
+tracking or dynamic feasibility.
+
+```bash
+python -m unittest discover -s tests -p test_g1_causal_vae.py
+python scripts/g1/evaluate.py --checkpoint outputs/g1_rot6d68/best.pt \
+  --data "$DATA_ROOT" --mjcf "$G1_MJCF" --output outputs/g1_rot6d68/evaluation
+```
+
+`--smoke` / `--smoke-full-model` training and `--limit` evaluation are explicitly
+marked as smoke/partial results and cannot satisfy the production supervisor.
