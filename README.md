@@ -367,3 +367,9 @@ Copyright (c) 2025 Shanda AI Research Tokyo
 ### Data License Notice
 
 The preprocessed datasets we provide contain **extracted motion features (263-dim) and text annotations** derived from HumanML3D and BABEL, which are built upon AMASS and HumanAct12. We **do not distribute raw AMASS data** (SMPL parameters/meshes). This follows standard practice in the motion generation research community. If you require raw motion data or plan to use it for commercial purposes, please register and agree to the licenses on the [AMASS website](https://amass.is.tue.mpg.de/).
+
+## Native Unitree G1 reconstruction
+
+For BONES-SEED G1 reconstruction with the causal 1D VAE, TextOp geometry
+losses, terrain-aware foot-contact supervision, 500-epoch training and MoMask
+MPJPE evaluation, see [README_G1.md](README_G1.md).
