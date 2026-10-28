@@ -1,0 +1,12 @@
+# Standalone native-G1 training/preparation/evaluation (Python 3.11 tested).
+torch
+numpy
+scipy
+pandas
+pyarrow
+mujoco
+imageio
+imageio-ffmpeg
+pillow
+matplotlib
+wandb
