@@ -29,3 +29,6 @@ server.pid
 
 # configs
 configs/paths.yaml
+
+# Local task planning notes
+.planning/

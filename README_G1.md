@@ -356,3 +356,294 @@ with separate original-world and GT-root-translation-aligned diagnostic videos.
 The stairs clip is explicitly marked as terrain-dependent with no original
 stairs geometry. All 14 exported videos were verified at 1920x576, 20 FPS,
 with exact source frame counts.
+
+## Absolute-yaw experiment: rot6d69 (2026-10-29)
+
+`scripts/run_g1_rot69_4gpu.sh` starts a fresh VAE on GPUs 4–7, 2048 examples
+per GPU (global 8192), for 500 epochs. This experiment explicitly uses GPU 7,
+superseding the previous reservation for the completed seven-GPU run. Run as
+Linux user langlang in Zellij with online W&B. Output:
+`outputs/g1_rot69_absyaw_500ep_bs2048_mpjpe`.
+
+The original 68 channels are preserved exactly; channel 68 (zero-based) is
+continuous, unwrapped absolute yaw in radians in the native clip's canonical
+coordinate frame. Unwrapping precedes training crops. The decoder uses this
+predicted absolute yaw directly for full root orientation and rotating local
+XY increments. It uses only GT initial XY, not GT initial yaw. The original
+yaw-delta and joint-delta outputs remain supervised feature channels; they
+are not integrated to recover root orientation or joint angles. No sine/cosine
+expansion is added. All seven losses and their weights remain unchanged,
+with rec averaged over 69 normalized channels. The original 68 training
+means/stds are verified unchanged; the new yaw statistics use training only.
+
+Data preparation: `scripts/prepare_g1_rot6d69.py --native-root
+outputs/bones_g1_native38 --rot68-root outputs/bones_g1_rot6d68 --output
+outputs/bones_g1_rot6d69`. It checks every clip's unchanged first 68 channels
+and full-trajectory roundtrip. Original source splits and foot-contact
+eligibility are retained. Terrain actions remain in training except for
+contact supervision. The fixed 8107-clip filtered validation set is unchanged.
+
+Model dimensions, Adam, 65-frame crops, FP32/TF32-off and the original fresh
+rot68 epoch-cosine LR formula (1e-4 to approximately 1e-6) are retained.
+There are 19 optimizer updates per epoch, 9500 total. Every epoch saves latest;
+every 25 epochs evaluates fixed-validation global MPJPE and saves a numbered
+checkpoint, selecting best only by that metric. The first best.pt is produced
+at epoch 25; earlier latest checkpoints can still resume. Final best/latest
+are evaluated on the full test split using unchanged MoMask metrics.
+
+Resume by appending `--resume
+outputs/g1_rot69_absyaw_500ep_bs2048_mpjpe/latest.pt` to the launcher. Source,
+data, cohort and full configuration identities must match; Adam and all four
+RNG streams are restored. Previous native38/rot68 hashed sources are unchanged.
+
+Production session: `zellij attach flood-rot69-absyaw` as langlang.
+W&B run: https://app.forge.coreweave.com/langlang-02-ustc/flood-g1-vae/runs/cyk9zyux .
+Four-rank smoke/resume and unchanged-MoMask validation are checked by
+`tests/check_rot69_pipeline.py`; representation invariants by
+`python -m unittest discover -s tests -p test_rot69.py -v`.
+
+## GT-matched temporal-loss prototype (2026-10-30; smoke only)
+
+The original rot69 checkpoint reduced spatial error but the seven historical
+visual clips had higher root angular velocity/acceleration errors. Full-test
+hinge acceleration error slightly improved, so root-driven whole-body jitter
+must be separated from joint-coordinate errors. This experiment starts fresh
+with the same seed, model, 69D inputs, splits, batch and LR schedule as rot69;
+only the training objective changes. The proposed production configuration was
+500 epochs on GPUs4–7, batch2048 per GPU (global8192), with online W&B as
+langlang. It was never production-launched; its reserved output directory is
+`outputs/g1_rot69_temporal_500ep_bs2048_mpjpe`.
+
+| Loss | Prior weight | Temporal experiment |
+|---|---:|---:|
+| body_rot | 0.01 | 0.1 |
+| dof_vel | 1e-5 | 0.01 |
+| dof_acc | absent | 1e-4 |
+| root_rot_vel | absent | 0.01 |
+| root_rot_acc | absent | 1e-4 |
+
+The other five original losses are unchanged. There are ten active terms,
+not seven. Derivatives match GT derivatives with Huber delta1; no zero-motion
+penalty is applied. Joint acceleration is in rad/s². Root angular velocity
+is the world-frame SO(3) logarithm of `R[t+1] R[t]^T`, scaled by20Hz, in rad/s;
+its first difference times20 defines angular acceleration. Full decoded root
+rotation (absolute yaw and predicted tilt) is supervised, not just yaw. Valid
+pair/triple masks and DDP denominators exclude padded boundaries.
+
+`g1/temporal_loss.py`, `g1/temporal_ddp.py`, `g1/temporal_metrics.py`,
+`g1/temporal_eval.py`, `train_g1_rot69_temporal.py` and
+`eval_g1_rot69_temporal.py` are independent of old hashed training sources.
+Launch `scripts/run_g1_rot69_temporal_4gpu.sh` as langlang. Every25 epochs,
+fixed validation records unchanged MPJPE plus root angular velocity and
+acceleration RMSE and joint velocity/acceleration RMSE. Best remains selected
+by global MPJPE; inspect temporal metrics on the saved periodic checkpoints
+as well. Final full-test evaluation includes both root temporal metrics.
+An improvement in jitter is a hypothesis to test, not a guaranteed result.
+
+Validation: `tests/test_temporal_loss.py` covers SciPy parity, identity gradients,
+GT-motion preservation, padding/short clips, oscillation gradients and counts.
+`tests/check_temporal_ddp.py` checks all10 terms on unequal4-rank shards against
+a single global batch. The old rot69 checkpoint's frozen validation baseline
+is evaluated by `scripts/eval_rot69_temporal_baseline.py` and stored in
+`outputs/rot69_temporal_diagnostics/baseline_fixed_val`.
+
+## Approved root-temporal configuration (2026-10-31)
+
+The earlier ten-term temporal prototype was only smoke-tested, never launched
+as production. The approved experiment uses **nine** terms: original seven
+with `body_rot=0.05`, `dof_vel=0.01`, plus `root_rot_vel=0.01` and
+`root_rot_acc=1e-4`. There is **no dof_acc loss**. Joint acceleration remains
+an evaluation metric. Other weights, data/representation, initialization seed,
+model dimensions, LR schedule and frozen validation cohort are unchanged.
+
+New code is `g1/root_temporal_loss.py`, `g1/root_temporal_ddp.py` and
+`train_g1_rot69_root_temporal.py`; it reuses the temporal evaluator. Start via
+`scripts/run_g1_rot69_root_temporal_4gpu.sh` as langlang, or resume by adding
+`--resume outputs/g1_rot69_root_temporal_500ep_bs2048_mpjpe/latest.pt`.
+User approved physical GPUs **3,4,5,7** because GPU6 is occupied. Train fresh
+for500epochs,2048 examples per GPU (global8192),19 updates/epoch,9500 total.
+Output is `outputs/g1_rot69_root_temporal_500ep_bs2048_mpjpe`.
+
+View the session from langlang with
+`env -u XDG_RUNTIME_DIR zellij attach flood-rot69-root-temporal`.
+From root use
+`runuser -u langlang -- env -u XDG_RUNTIME_DIR zellij attach flood-rot69-root-temporal`.
+Every25epochs records fixed-val MPJPE and root/joint derivative errors. Best
+continues to minimize global MPJPE. Prior rot69 frozen-val temporal baseline:
+root angular velocity RMSE0.50590rad/s, acceleration15.22557rad/s²;
+global MPJPE86.80392mm, root-relative18.12506mm (8107clips).
+
+Production W&B run for the nine-term configuration:
+https://app.forge.coreweave.com/langlang-02-ustc/flood-g1-vae/runs/9a7vrwyz .
+The approved run completed all 500 epochs / 9500 updates; best is epoch500.
+The older ten-term prototype remains unlaunched. Tests `test_root_temporal_loss.py`,
+`check_root_temporal_ddp.py` and `check_root_temporal_pipeline.py` verify the
+final nine-term objective, uneven-shard gradients, checkpoint selection,
+metric parity and resume behavior.
+
+## Completed rot69 reconstruction results and videos
+
+All full-test numbers below use the same 8333 clips and equal-clip action means,
+with unchanged MoMask G1 joint metrics. Terrain-dependent test clips remain
+included. Both rot69 runs trained fresh for 500 epochs / 9500 updates.
+
+| Model | Global MPJPE (mm) | Root-relative MPJPE (mm) | Root yaw error (deg) |
+|---|---:|---:|---:|
+| rot68 epoch1000 | 115.57 | 26.89 | 6.46 |
+| rot69 original epoch500 | 91.96 | 18.73 | 3.76 |
+| rot69 root-temporal epoch500 | 89.54 | 17.49 | 2.97 |
+
+On the separate fixed 8107-clip terrain-filtered validation cohort, root angular
+velocity RMSE decreased from 0.50590 to 0.19747 rad/s and angular acceleration
+RMSE from 15.22557 to 4.31970 rad/s². Best selection used global validation
+MPJPE (84.62153 mm), not test results or temporal metrics.
+Best checkpoint: `outputs/g1_rot69_root_temporal_500ep_bs2048_mpjpe/best.pt`.
+Machine-readable summaries are in `docs/results/rot69_reconstruction.json`;
+weights, data and videos remain local under ignored `outputs/`.
+
+Generate fixed historical comparisons with `scripts/visualize_rot69_comparison.py`
+(original rot69 versus rot68) or `scripts/visualize_rot69_root_temporal.py`
+(root-temporal versus original rot69). Each writes a new output directory and
+verifies individual clip metrics against the saved official evaluation CSVs.
+Render with the corresponding `scripts/render_rot69_comparison.py` or
+`scripts/render_rot69_root_temporal.py`, once with `--follow` and once with
+`--follow --root-align`. The renderers require MuJoCo EGL and the local MimicLite
+G1 mesh assets. Run from the configured environment with an available GPU.
+
+The latest page is `outputs/rot69_root_temporal_comparison/index.html`: seven
+unchanged clips, 14 synchronized three-column videos at 1440x576, 20 FPS.
+Columns are GT, original rot69, root-temporal rot69. `root_aligned` videos replace
+predicted root XYZ with GT XYZ for visualization only, preserving predicted
+rotation and joint angles. Overlay metrics always describe original unaligned
+predictions. No smoothing, joint clipping or physics correction is applied.
+
+## G1 text-conditioned generation (2026-11-01)
+
+Launch `bash scripts/run_g1_ldf_4gpu.sh` as langlang. Session:
+`env -u XDG_RUNTIME_DIR zellij attach flood-g1-ldf-rot69`.
+The independent `train_g1_ldf.py` adapts upstream Wan diffusion forcing to the
+frozen epoch500 `g1_rot69_root_temporal_500ep_bs2048_mpjpe/best.pt` VAE.
+32D posterior means, no latent rescaling; complete prepared clips (up to196
+frames) retain their original source-group splits. Each training visit randomly
+chooses a source-level BONES description. Text uses frozen local CLIP ViT-B/32
+**token hidden states**, not the upstream UMT5 encoder. Original Wan structure:
+1024 hidden, 8 layers, 8 heads, velocity target, chunk5, CFG5, dropout0.1, EMA0.99.
+A local SDPA adapter honors actual key lengths without requiring FlashAttention;
+old hashed model sources are unchanged.
+
+GPUs4–7, batch64 per GPU/global256, 500 epochs, AdamW2e-4, 1000-update warmup
+then cosine to1e-6. Frozen VAE FP32; diffusion BF16 autocast. DistributedSampler
+drops at most3 training examples per epoch, rotating with the shuffle. Online
+W&B uses langlang's credentials, entity langlang-02-ustc, project
+flood-g1-generation. Output: `outputs/g1_ldf_rot69_root_temporal_clip_500ep`.
+Every epoch saves latest; every25 epochs generates the entire frozen8107-clip
+validation cohort with fixed noise seeds, GT duration and only initial GT XY.
+Best selection uses equal-clip global MPJPE; root-relative MPJPE is also logged.
+Paired generative MPJPE is a reproducible checkpoint criterion, not a measure
+of language alignment, diversity, or reconstruction quality. Test is untouched.
+
+Append `--resume outputs/g1_ldf_rot69_root_temporal_clip_500ep/latest.pt` to the
+launcher for recovery. Model, EMA, optimizer, step, best metric, and per-rank RNG
+states are retained; source/data/cohort/parent/text encoder hashes must match.
+W&B run identity and URL are in `wandb_run.json`; logs include steps and ETA.
+`tests/check_g1_generation.py` verifies attention padding and exact frozen-VAE
+encode/decode parity. Tiny four-rank train/resume and production-size four-rank
+batch64 train/generate/checkpoint smoke tests passed before production launch.
+
+### Batch migration (2026-11-01)
+
+User requested batch256 per GPU/global1024. At epoch2/update1164, the batch64
+checkpoint, identity and original trainer/launcher were archived in
+`batch64_archive_epoch0002/` inside the run directory. Resume starts from
+`batch256_resume.pt` with unchanged model, EMA, optimizer and rank RNG state.
+There are now146 updates/epoch; the persisted schedule horizon is73872 total
+cumulative updates, ending at epoch500. Warmup is not restarted. W&B run
+zbhcjme4 and Zellij session flood-g1-ldf-rot69 are reused. The launch script now
+defaults to batch256. `batch_size_migration.json` records the old/new identities
+and original checkpoint hash. After the next epoch save, normal recovery uses
+`--resume outputs/g1_ldf_rot69_root_temporal_clip_500ep/latest.pt`.
+
+### Disable periodic generation validation (2026-11-01)
+
+At user request, `--eval-every 0` now disables the every25-epoch generation
+validation. Final epoch500 validation is retained. Every epoch still writes
+latest.pt, and numbered checkpoints remain every25 epochs. There is no periodic
+MPJPE-based best selection while validation is disabled. Migration occurred at
+epoch4/update1456; `periodic_val_archive_epoch0004/` preserves the prior state,
+and `validation_policy_migration.json` records the exact identities. Model,
+EMA, optimizer, RNG and LR schedule are retained. The launcher defaults to
+batch256 and eval-every0. Initial migrated checkpoint is
+`no_periodic_val_resume.pt`; use latest.pt after the next saved epoch. Same
+langlang Zellij session and W&B run continue.
+
+## Fresh segment-conditioned G1 generation (2026-11-03)
+
+The source-caption experiment was stopped at epoch435/update64382 at the user's
+request; its final saved state and launch sources are preserved under
+`stopped_for_segment_epoch0435/` in that experiment directory. It is not the
+initialization for the new model.
+
+`train_g1_ldf_segment.py` starts a fresh1024-wide/8-layer Wan generator on
+physical GPUs4–7 with actual batch512/GPU/global2048,500epochs, AdamW2e-4,
+1000-update warmup, cosine decay to1e-6, EMA0.99. The original rot69 root-temporal
+VAE best.pt and CLIP ViT-B/32 remain frozen. Original69D inputs and32D posterior
+means are unchanged. Launch as langlang with
+`bash scripts/run_g1_ldf_segment_4gpu.sh`; Zellij session is
+`env -u XDG_RUNTIME_DIR zellij attach flood-g1-ldf-segment`.
+Output: `outputs/g1_ldf_rot69_segment_clip_500ep_bs512`. New online W&B run uses
+langlang-02 / langlang-02-ustc, project flood-g1-generation.
+
+Temporal labels are frozen under `outputs/g1_segment_labels_v1`. Rebuild with
+`g1.segment_data.prepare(native_root, temporal_jsonl, new_output_directory)`.
+Events use left-closed/right-open source seconds; latent j maps to
+`(start_frame + min(4*j, frames-1))/20`. Unlabelled gaps receive empty text,
+not an invented motion label;20 entirely unlabelled train windows are excluded,
+leaving148885 samples. There are38 event/window intersections with no latent
+anchor; these are reported rather than artificially extended. Source group
+train/val/test splits remain unchanged. Conflicting overlaps, invalid times and
+duplicate temporal records fail preparation. The manifest retains counts,
+exclusions and source/code hashes. Existing windows remain40–196frames.
+
+Text conditions switch inside a continuous motion window. `g1/segment_generation.py`
+groups queries by sample/text context; it projects text per group without
+materializing a separate full text embedding for every motion token. Numerical
+output and gradient parity against upstream frame-wise conditioning is checked.
+Random-prefix diffusion forcing and last-five-token velocity supervision are
+unchanged. CFG drops the entire sample's text with probability0.1. Gap and CFG
+dropout ratios are logged separately. Activation checkpointing is enabled:
+full-size smoke peak allocation was11.35GiB versus39.29GiB without checkpointing;
+recomputation provides memory headroom for varying segment counts. No gradient
+accumulation substitutes for actual batch512. The final incomplete batch is
+smaller; DistributedSampler drops one example per epoch with shuffled ordering.
+There are73 updates/epoch and36500 updates over500epochs.
+
+The batch accepts ordered `text` lists and `feature_text_end` latent endpoints;
+inference supports both explicit multi-stage plans and live prompt switching
+while retaining stream state. `scripts/preview_g1_segments.py --checkpoint PATH
+--output NEW_DIRECTORY` generates a fixed wave/walk/squat plan and renders G1
+MuJoCo meshes. The smoke preview is only a pipeline check, not generation quality.
+
+Periodic generation validation remains disabled. Latest is saved every epoch,
+numbered snapshots every25epochs, and the frozen8107-clip cohort is generated
+only at the final epoch using aligned segment conditions. Paired global/root-
+relative MPJPE is not a language alignment or diversity metric. Test is unused.
+Resume by appending `--resume outputs/g1_ldf_rot69_segment_clip_500ep_bs512/latest.pt`
+to the launcher; optimizer, EMA, schedule and rank RNG states are restored with
+strict source/data/config identity checks.
+
+Validation: `tests/check_g1_segments.py` covers source-time offsets, event
+boundaries, gaps, short events, padding, single/multi-condition Wan output and
+gradient parity, sample/interval isolation, original FD loss parity and staged
+inference. Four-rank actual batch512 train/final-eval/checkpoint/resume passed;
+resumed loss matches within1e-4. Live prompt switches retain stream state, and
+the137-frame/20FPS G1 pipeline video was verified.
+
+2026-11-03 production update: resumed epoch2/step146 with batch128/GPU
+(global512), activation checkpointing disabled, GPUs4–7. Model, EMA, optimizer
+and rank RNG states were preserved and verified exactly. Remaining498 epochs
+use291 updates/epoch; cumulative schedule horizon145064; warmup continues.
+Output retains its historical bs512 suffix. Migration details: output file
+`batch_size_migration_128.json`; previous state: `batch512_archive_epoch0002`.
+Same W&B b6k4p4u3 and langlang Zellij flood-g1-ldf-segment. At step250,
+throughput570 samples/s, estimated remaining training36.1h (early estimate,
+excluding final evaluation). Launcher now selects128/no checkpointing.

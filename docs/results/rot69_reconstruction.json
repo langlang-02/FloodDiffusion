@@ -1,0 +1,98 @@
+{
+  "protocol": "MoMask G1, 8333 full-test clips, equal-clip action means; root-relative removes translation only",
+  "test": {
+    "g1_rot68_continue_ep0500_1000_bs2048_mpjpe": {
+      "source": "outputs/g1_rot68_continue_ep0500_1000_bs2048_mpjpe/eval_best/summary.json",
+      "epoch": 1000,
+      "samples": 8333,
+      "metrics": {
+        "global_mpjpe_mm": 115.57198301967304,
+        "root_relative_mpjpe_mm": 26.891746239832123,
+        "root_ade_m": 0.1089293356532576,
+        "root_fde_m": 0.20784704892006173,
+        "root_rotation_deg": 7.046505978404425,
+        "root_yaw_deg": 6.464403428228587,
+        "joint_mae_deg": 1.5188101556111424,
+        "joint_rmse_deg": 2.3743982510783157,
+        "joint_velocity_rmse_rad_s": 0.4997692813026788,
+        "joint_acceleration_rmse_rad_s2": 13.968623726404859,
+        "left_wrist_position_mm": 123.4159124698671,
+        "right_wrist_position_mm": 121.18537367613365,
+        "left_ankle_position_mm": 122.40023271196046,
+        "right_ankle_position_mm": 122.8214135313612
+      }
+    },
+    "g1_rot69_absyaw_500ep_bs2048_mpjpe": {
+      "source": "outputs/g1_rot69_absyaw_500ep_bs2048_mpjpe/eval_best/summary.json",
+      "epoch": 500,
+      "samples": 8333,
+      "metrics": {
+        "global_mpjpe_mm": 91.96186173512957,
+        "root_relative_mpjpe_mm": 18.732342791474338,
+        "root_ade_m": 0.0875583815120541,
+        "root_fde_m": 0.14623736557075595,
+        "root_rotation_deg": 4.373089299747733,
+        "root_yaw_deg": 3.7588596303865875,
+        "joint_mae_deg": 1.5401346701724066,
+        "joint_rmse_deg": 2.389842542271704,
+        "joint_velocity_rmse_rad_s": 0.4822707384570827,
+        "joint_acceleration_rmse_rad_s2": 13.448708199602093,
+        "left_wrist_position_mm": 97.34196176480863,
+        "right_wrist_position_mm": 96.62283863607009,
+        "left_ankle_position_mm": 96.63422245846553,
+        "right_ankle_position_mm": 96.40003297435669
+      }
+    },
+    "g1_rot69_root_temporal_500ep_bs2048_mpjpe": {
+      "source": "outputs/g1_rot69_root_temporal_500ep_bs2048_mpjpe/eval_best/summary.json",
+      "epoch": 500,
+      "samples": 8333,
+      "metrics": {
+        "global_mpjpe_mm": 89.53739209955056,
+        "root_relative_mpjpe_mm": 17.492518655395187,
+        "root_ade_m": 0.08566111977034203,
+        "root_fde_m": 0.14294788155285457,
+        "root_rotation_deg": 3.6615679770486627,
+        "root_yaw_deg": 2.9741376170958036,
+        "joint_mae_deg": 1.4995289041824906,
+        "joint_rmse_deg": 2.332565046384614,
+        "joint_velocity_rmse_rad_s": 0.43510904560663805,
+        "joint_acceleration_rmse_rad_s2": 11.411085816987862,
+        "left_wrist_position_mm": 95.24231221263011,
+        "right_wrist_position_mm": 93.39741580729208,
+        "left_ankle_position_mm": 94.55227805336999,
+        "right_ankle_position_mm": 93.8683243822997,
+        "root_angular_velocity_rmse_rad_s": 0.19988597634352528,
+        "root_angular_acceleration_rmse_rad_s2": 4.362448226152383
+      }
+    }
+  },
+  "fixed_validation": {
+    "rot69_original": {
+      "source": "outputs/rot69_temporal_diagnostics/baseline_fixed_val/summary.json",
+      "samples": 8107,
+      "epoch": 500,
+      "metrics": {
+        "global_mpjpe_mm": 86.80391571962011,
+        "root_relative_mpjpe_mm": 18.125060035500997,
+        "root_angular_velocity_rmse_rad_s": 0.5058974788475248,
+        "root_angular_acceleration_rmse_rad_s2": 15.22556548924621,
+        "joint_velocity_rmse_rad_s": 0.4867799236823208,
+        "joint_acceleration_rmse_rad_s2": 13.5688677587785
+      }
+    },
+    "rot69_root_temporal": {
+      "source": "outputs/g1_rot69_root_temporal_500ep_bs2048_mpjpe/eval_fixed_val/epoch_0500/summary.json",
+      "samples": 8107,
+      "epoch": 500,
+      "metrics": {
+        "global_mpjpe_mm": 84.62153274415674,
+        "root_relative_mpjpe_mm": 16.84882220656389,
+        "root_angular_velocity_rmse_rad_s": 0.1974651865631705,
+        "root_angular_acceleration_rmse_rad_s2": 4.319699294096619,
+        "joint_velocity_rmse_rad_s": 0.44045241387999573,
+        "joint_acceleration_rmse_rad_s2": 11.564942347984271
+      }
+    }
+  }
+}

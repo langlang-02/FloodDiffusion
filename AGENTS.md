@@ -15,3 +15,12 @@
 - The older native38 and rot68 trainers are historical loss-selected runs;
   do not change their hashed source in place to add new continuation policies.
   The current continuation entry is `scripts/run_g1_rot68_continue_7gpu.sh` (GPUs 0–6; reserve GPU 7).
+
+- Current fresh experiment: `scripts/run_g1_rot69_4gpu.sh`, rot68 plus one
+  continuous absolute-yaw channel (69D). User explicitly requested GPUs 4–7,
+  per-GPU batch 2048, 500 epochs; GPU 7 reservation applies only to the older run.
+
+- Latest approved run (2026-10-31): `scripts/run_g1_rot69_root_temporal_4gpu.sh`.
+  User approved GPUs 3,4,5,7 (GPU6 occupied), per-GPU2048, fresh500epochs.
+  Use body_rot=.05, dof_vel=.01, root_rot_vel=.01, root_rot_acc=1e-4;
+  do not enable dof_acc. Previous ten-term prototype was never production-launched.
